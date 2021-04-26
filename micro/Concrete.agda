@@ -39,11 +39,31 @@ module _ {a b} {A : Set a}{B : Set b} where
 injName : Injective name
 injName refl = refl
 
+injQName : Injective qName
+injQName refl = refl
+
+inj₂Qual : Injective₂ qual
+inj₂Qual refl = refl , refl
+
 postulate
   injStringFromList : Injective String.fromList
 
 _≟_ : (x y : Name) → Dec (x ≡ y)
 name x ≟ name y = congDec injName $ x == y
+
+cong₂Dec : ∀{X Y Z : Set} → {x x' : X} {y y' : Y} → {f : X → Y → Z}
+         → (inj : Injective₂ f)
+         → Dec (x ≡ x') → Dec (y ≡ y') → Dec (f x y ≡ f x' y')
+cong₂Dec inj yes! yes! = yes!
+cong₂Dec inj (no ¬p) x = no (λ z → ¬p (proj₁ (inj z)))
+cong₂Dec inj x (no ¬p) = no (λ z → ¬p (proj₂ (inj z)))
+
+_≟q_ : (x y : QName) → Dec (x ≡ y)
+qName x ≟q qName y = congDec injQName (x ≟ y)
+qName x ≟q qual y ys = no (λ ())
+qual x xs ≟q qName y = no (λ ())
+qual x xs ≟q qual y ys = cong₂Dec inj₂Qual (x ≟ y) (xs ≟q ys)
+
   -- congDec injName $
   -- injDec injStringFromList $
   -- String.fromList x == String.fromList y

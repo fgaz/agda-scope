@@ -7,7 +7,7 @@ open import Category.Applicative                  public using (RawApplicative)
 open import Category.Monad                        public using (RawMonad) -- ; return; _>>=_)
 
 open import Data.Unit                             public using (⊤)
-open import Data.Product                          public using (Σ; ∃; _,_; proj₁; proj₂)
+open import Data.Product                          public using (Σ; ∃; _×_; _,_; proj₁; proj₂)
 
 open import Data.Empty                            public using (⊥; ⊥-elim)
 open import Data.Sum                              public using (_⊎_; inj₁; inj₂; [_,_]′)
@@ -31,7 +31,7 @@ open import Data.List.NonEmpty                    public using (List⁺; _∷_; 
 open import Function                              public using (id; _∘_; _∘′_; _$_; case_of_)
 open import Level                                 public using (_⊔_)
 
-open import Relation.Binary.PropositionalEquality public using (_≡_; refl; cong)
+open import Relation.Binary.PropositionalEquality public using (_≡_; refl; cong; cong₂)
 open import Relation.Nullary                      public using (Dec; ¬_) hiding (module Dec)
 
 open import IO.Primitive      public using (IO)
@@ -40,6 +40,9 @@ open import IO.Primitive      public using (IO)
 
 Injective : ∀{a b}{A : Set a}{B : Set b} (f : A → B) → Set _
 Injective f = ∀{x y} → f x ≡ f y → x ≡ y
+
+Injective₂ : ∀{a b c}{A : Set a}{B : Set b}{C : Set c} (f : A → B → C) → Set _
+Injective₂ f = ∀{x x' y y'} → f x y ≡ f x' y' → (x ≡ x' × y ≡ y')
 
 Surjective : ∀{a b}{A : Set a}{B : Set b} (f : A → B) → Set _
 Surjective f = ∀ y → ∃ λ x → f x ≡ y
