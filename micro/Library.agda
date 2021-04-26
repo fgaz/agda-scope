@@ -17,7 +17,7 @@ open import Data.Bool                             public using (Bool; true; fals
 open import Data.String                           public using (String; _≟_)
 
 open import Data.List.Base                        public using (List; []; _∷_; _++_)
-open import Data.List.Membership.Propositional    public using (_∈_)
+open import Data.List.Membership.Propositional    public using (_∈_; mapWith∈)
 open import Data.List.Membership.Propositional.Properties
                                                   public using (∈-map⁺; ∈-++⁺ˡ; ∈-++⁺ʳ)
 open import Data.List.Relation.Unary.Any          public using (Any; here; there)

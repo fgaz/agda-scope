@@ -140,9 +140,9 @@ interleaved mutual
   dslookupAll : (sc : Scope) → (ds : Decls sc) → List (Σ (C.QName × Scope) λ (xs , sc') → DsNameM sc ds xs sc')
   dlookupAll : (sc : Scope) → (d : Decl sc) → List (Σ (C.QName × Scope) λ (xs , sc') → DNameM sc d xs sc')
   ilookupAll : (iface : Interface sc)
-             → List ( Σ (C.QName × Scope) λ (ys , sc')
-                    → Σ (SNameM sc ys sc') λ sn
-                    → (xs , ((ys , sc') , sn)) ∈ iface)
+             → List (∃ λ xs → ( Σ (C.QName × Scope) λ (ys , sc')
+                              → Σ (SNameM sc ys sc') λ sn
+                              → (xs , ((ys , sc') , sn)) ∈ iface))
 
   slookupAll1 ε = []
   -- We only need the direct contents of the module so we only look at the first level.
@@ -157,9 +157,20 @@ interleaved mutual
   dlookupAll sc (modl x ds) =
     Data.Product.map (Data.Product.map₁ (C.qual x)) inside [<$>] dslookupAll sc ds
   dlookupAll sc (opn m iface) =
-    Data.Product.map₂ (λ {∃sc} (sn , stuff∈iface) → imp {! stuff∈iface !}) [<$>] ilookupAll iface
+    -- TODO This is a bit of a mess. Same with ilookupEntry.
+    --      Is it possible to clean it up a bit by restructuring the sigmas?
+    (λ (xs , ((ys , sc') , (sn , entry∈iface))) →
+      ((xs , sc') , imp entry∈iface)
+    )
+    [<$>] ilookupAll iface
 
-  ilookupAll = ?
+  ilookupEntry : ∀{sc iface} → {entry : InterfaceEntry sc} → entry ∈ iface
+               → (∃ λ xs → ( Σ (C.QName × Scope) λ (ys , sc')
+                           → Σ (SNameM sc ys sc') λ sn
+                           → (xs , ((ys , sc') , sn)) ∈ iface))
+  ilookupEntry {sc} {iface} {xs , ys,sc' , sn} entry∈iface = xs , (ys,sc' , (sn , entry∈iface))
+
+  ilookupAll iface = mapWith∈ iface ilookupEntry
 
 -- Get from the ImportDirective the name we (may) open some value as
 -- considering renaming, using, hiding
@@ -187,3 +198,9 @@ interleaved mutual
   ... | just ds' with checkDecl (sc ⦊ ds') d
   ... | just d' = just (ds' ⦊ d')
   ... | _ = nothing
+
+data Program : Set where
+  prg : C.Name → Decls sc → Program
+
+checkProgram : C.Program → Maybe Program
+checkProgram (C.prg x ds) = prg x <$> checkDecls ε ds
