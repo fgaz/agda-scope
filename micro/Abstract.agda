@@ -21,17 +21,16 @@ variable
 interleaved mutual
 
   -- Scope of a declaration.
-
   data Scope : Set
   variable
     sc sc' sc'' : Scope
 
   -- Declarations in a scope.
-
   data Decls (sc : Scope) : Set
   variable
     ds₀ ds ds' : Decls sc
 
+  -- A well-scoped name (of a module) in a scope.
   -- The name exists in scope, and is a module that defines a scope.
   -- Technically, only the Decls of the module is needed, but since it depends
   -- on the scope, it's cleaner to just pass the scope
@@ -50,6 +49,7 @@ interleaved mutual
       innerScope : Scope
       innerSName : SNameM sc innerName innerScope
 
+  -- A module interface is a list of well-scoped exported names (entries)
   Interface : Scope → Set
   Interface sc = List (InterfaceEntry sc)
 
@@ -57,37 +57,40 @@ interleaved mutual
   --
   --   * A module definition.
   --   * Importing the declarations of another module via `open`.
-
   data Decl (sc : Scope) : Set where
     modl : (x : C.Name) (ds : Decls sc) → Decl sc
     opn : (m : SNameM sc xs sc')
         → (iface : Interface sc)
         → Decl sc
-
   variable
     d d' : Decl sc
 
   -- A scope is a snoc list of lists of declarations.
-
   constructor  -- Scope
     ε   : Scope
     _⦊_ : (sc : Scope) (ds : Decls sc) → Scope
 
   -- Lists of declarations are also given in snoc-form.
-
   constructor  -- Decls
     ε   : Decls sc
     _⦊_ : (ds : Decls sc) (d : Decl (sc ⦊ ds)) → Decls sc
 
+  -- A well-scoped name (of a module) in a list of declarations.
+  -- The same considerations as for SNameM apply.
   data DNameM : (sc : Scope) → Decl sc → C.QName → Scope → Set
 
+  -- A well-scoped name (of a module) in a declaration.
+  -- The same considerations as for SNameM apply.
   data DsNameM : (sc : Scope) → Decls sc → C.QName → Scope → Set where
     here : DNameM (sc ⦊ ds) d xs sc' → DsNameM sc (ds ⦊ d) xs sc'
     there : DsNameM sc ds xs sc' → DsNameM sc (ds ⦊ d) xs sc'
 
   constructor -- DNameM
+    -- It is this module, and the scope is its content
     content : DNameM sc (modl x ds) (C.qName x) (sc ⦊ ds)
+    -- It is inside this module
     inside : DsNameM sc ds xs sc' → DNameM sc (modl x ds) (C.qual x xs) sc'
+    -- It is imported from another module
     imp : ∀{iface m sn} → interfaceEntry xs ys sc'' sn ∈ iface
         → DNameM sc (opn {sc = sc} {xs = xs'} {sc' = sc'} m iface) xs sc''
 
@@ -95,8 +98,7 @@ interleaved mutual
     site : DsNameM sc ds xs sc' → SNameM (sc ⦊ ds) xs sc'
     parent : SNameM sc xs sc' → SNameM (sc ⦊ ds) xs sc'
 
--- TODO shadowing stuff with Resolution
-
+-- An interface 'iface' exports the name 'exportedName'
 record Export (sc : Scope) (iface : Interface sc) (exportedName : C.QName) : Set where
   constructor export
   field
@@ -105,6 +107,8 @@ record Export (sc : Scope) (iface : Interface sc) (exportedName : C.QName) : Set
     innerSName : SNameM sc innerName innerScope
     inIface : interfaceEntry exportedName innerName innerScope innerSName ∈ iface
 
+-- Lookup of the closest (not shadowed) definition
+-- TODO shadowing stuff with Resolution
 interleaved mutual
   dlookup  : (d : Decl sc) → (xs : C.QName)
            → Maybe (∃ λ sc' → DNameM sc d xs sc')
@@ -147,6 +151,7 @@ interleaved mutual
   ... | no ¬p | just (export ys' sc' sn' entry∈iface) = just (export ys' sc' sn' (there entry∈iface))
   ... | no ¬p | nothing = nothing
 
+-- Enumerate all names defined in a scope/declaration(s)/interface
 interleaved mutual
   slookupAll1 : (sc : Scope)
               → List (Σ (C.QName × Scope) λ (xs , sc') → SNameM sc xs sc')
@@ -186,6 +191,8 @@ assignExportedName : C.ImportDirective
 -- TODO oops... ImportDirective here is just private/public... we don't have hiding/using/renaming!
 -- ...so for now we just export everything as is
 assignExportedName dir ((ys , sc') , sn) = just (interfaceEntry ys ys sc' sn)
+
+-- Go from the concrete syntax to the well-scoped one
 
 interleaved mutual
   checkDecl : (sc : Scope) → C.Decl → Maybe (Decl sc)
