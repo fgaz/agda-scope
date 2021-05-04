@@ -127,7 +127,7 @@ interleaved mutual
   ... | yes! | nothing = nothing
   ... | no ¬p | _ = nothing
   dlookup (opn m iface) xs with ilookup iface xs
-  ... | just (export ys sc sName entry∈iface) = just (sc , imp entry∈iface)
+  ... | just (export ys sc sName inIface) = just (sc , imp inIface)
   ... | nothing = nothing
 
   dslookup ε xs = nothing
@@ -148,7 +148,7 @@ interleaved mutual
                       (cong-app (cong-app (cong-app
                         (cong interfaceEntry p)
                         ys) sc) sn)))
-  ... | no ¬p | just (export ys' sc' sn' entry∈iface) = just (export ys' sc' sn' (there entry∈iface))
+  ... | no ¬p | just (export ys' sc' sn' inIface) = just (export ys' sc' sn' (there inIface))
   ... | no ¬p | nothing = nothing
 
 -- Enumerate all names defined in a scope/declaration(s)/interface
@@ -173,13 +173,13 @@ interleaved mutual
   dlookupAll sc (modl x ds) =
     Data.Product.map (Data.Product.map₁ (C.qual x)) inside <$> dslookupAll sc ds
   dlookupAll sc (opn m iface) =
-    (λ (xs , export ys sc' sn entry∈iface) → (xs , sc') , imp entry∈iface)
+    (λ (xs , export ys sc' sn inIface) → (xs , sc') , imp inIface)
     <$> ilookupAll iface
 
   ilookupEntry : ∀{sc iface} → {entry : InterfaceEntry sc} → entry ∈ iface
                → (∃ λ xs → Export sc iface xs)
-  ilookupEntry {sc} {iface} {interfaceEntry xs ys sc' sn} entry∈iface =
-    xs , export ys sc' sn entry∈iface
+  ilookupEntry {sc} {iface} {interfaceEntry xs ys sc' sn} inIface =
+    xs , export ys sc' sn inIface
 
   ilookupAll iface = mapWith∈ iface ilookupEntry
 
