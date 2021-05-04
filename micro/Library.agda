@@ -31,7 +31,7 @@ open import Data.List.NonEmpty                    public using (List⁺; _∷_; 
 open import Function                              public using (id; _∘_; _∘′_; _$_; case_of_)
 open import Level                                 public using (_⊔_)
 
-open import Relation.Binary.PropositionalEquality public using (_≡_; refl; cong; cong₂)
+open import Relation.Binary.PropositionalEquality public using (_≡_; refl; cong; cong₂; cong-app)
 open import Relation.Nullary                      public using (Dec; ¬_) hiding (module Dec)
 
 open import IO.Primitive      public using (IO)

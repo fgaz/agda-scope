@@ -11,11 +11,8 @@ open Data.List using (mapMaybe)
 import Data.Product
 
 open import Data.Maybe.Instances using (maybeFunctor; maybeApplicative)
-open RawApplicative {F = Maybe {Agda.Primitive.lzero}} maybeApplicative
-
 open import Data.List.Instances using (listFunctor; listApplicative)
--- TODO can I use an overloaded <$>?
-open RawApplicative {F = List {Agda.Primitive.lzero}} listApplicative renaming (_<$>_ to _[<$>]_)
+open RawApplicative {{...}}
 
 variable
   x  y  : C.Name
@@ -44,8 +41,14 @@ interleaved mutual
 
   -- an interface entry defines a mapping between the exported name, and
   -- the SNameM of the internal name
-  InterfaceEntry : Scope → Set
-  InterfaceEntry sc = C.QName × Σ (C.QName × Scope) λ (xs , sc') → SNameM sc xs sc' -- can avoid sc' by restoring SName
+  record InterfaceEntry (sc : Scope) : Set where
+    inductive
+    constructor interfaceEntry
+    field
+      exportedName : C.QName
+      innerName : C.QName
+      innerScope : Scope
+      innerSName : SNameM sc innerName innerScope
 
   Interface : Scope → Set
   Interface sc = List (InterfaceEntry sc)
@@ -85,7 +88,7 @@ interleaved mutual
   constructor -- DNameM
     content : DNameM sc (modl x ds) (C.qName x) (sc ⦊ ds)
     inside : DsNameM sc ds xs sc' → DNameM sc (modl x ds) (C.qual x xs) sc'
-    imp : ∀{iface m sn} → (xs , ((ys , sc'') , sn)) ∈ iface
+    imp : ∀{iface m sn} → interfaceEntry xs ys sc'' sn ∈ iface
         → DNameM sc (opn {sc = sc} {xs = xs'} {sc' = sc'} m iface) xs sc''
 
   constructor -- SNameM
@@ -94,81 +97,84 @@ interleaved mutual
 
 -- TODO shadowing stuff with Resolution
 
+record Export (sc : Scope) (iface : Interface sc) (exportedName : C.QName) : Set where
+  constructor export
+  field
+    innerName : C.QName
+    innerScope : Scope
+    innerSName : SNameM sc innerName innerScope
+    inIface : interfaceEntry exportedName innerName innerScope innerSName ∈ iface
+
 interleaved mutual
-  dlookup : (d : Decl sc) → (xs : C.QName) → Maybe (∃ λ sc' → DNameM sc d xs sc')
-  dslookup : (ds : Decls sc) → (xs : C.QName) → Maybe (∃ λ sc' → DsNameM sc ds xs sc')
-  slookup : (sc : Scope) → (xs : C.QName) → Maybe (∃ λ sc' → SNameM sc xs sc')
-  ilookup : (iface : Interface sc)
-          → (xs : C.QName)
-          → Maybe ( Σ (C.QName × Scope) λ (ys , sc')
-                  → Σ (SNameM sc ys sc') λ sn
-                  → (xs , ((ys , sc') , sn)) ∈ iface)
+  dlookup  : (d : Decl sc) → (xs : C.QName)
+           → Maybe (∃ λ sc' → DNameM sc d xs sc')
+  dslookup : (ds : Decls sc) → (xs : C.QName)
+           → Maybe (∃ λ sc' → DsNameM sc ds xs sc')
+  slookup  : (sc : Scope) → (xs : C.QName)
+           → Maybe (∃ λ sc' → SNameM sc xs sc')
+  ilookup  : (iface : Interface sc) → (xs : C.QName)
+           → Maybe (Export sc iface xs)
 
-  -- XXX from here until the end of the mutual block the variable names are awful
-
-  dlookup {sc} (modl x ds) (C.qName x₁) with x C.≟ x₁
+  dlookup {sc} (modl x ds) (C.qName x') with x C.≟ x'
   ... | yes! = just ((sc ⦊ ds) , content)
   ... | no ¬p = nothing
-  dlookup (modl x ds) (C.qual x₁ xs) with x C.≟ x₁ | dslookup ds xs
-  ... | yes! | just x₁ = just (proj₁ x₁ , inside (proj₂ x₁))
+  dlookup (modl x ds) (C.qual x' xs) with x C.≟ x' | dslookup ds xs
+  ... | yes! | just (sc , dsName) = just (sc , inside dsName)
   ... | yes! | nothing = nothing
   ... | no ¬p | _ = nothing
-  dlookup {sc} (opn m iface) xs with ilookup iface xs
-  ... | just ((qn , sc') , sn , stuff∈iface) = just (sc' , imp stuff∈iface)
+  dlookup (opn m iface) xs with ilookup iface xs
+  ... | just (export ys sc sName entry∈iface) = just (sc , imp entry∈iface)
   ... | nothing = nothing
 
   dslookup ε xs = nothing
   dslookup (ds ⦊ d) xs with dlookup d xs | dslookup ds xs
-  ... | just (fst , snd) | _ = just (fst , here snd)
-  ... | nothing | just x = just (proj₁ x , there (proj₂ x))
+  ... | just (sc , dName) | _ = just (sc , here dName)
+  ... | nothing | just (sc , dsName) = just (sc , there dsName)
   ... | nothing | nothing = nothing
 
   slookup ε xs = nothing
   slookup (sc ⦊ ds) xs with dslookup ds xs | slookup sc xs
-  ... | just (fst , snd) | _ = just (fst , site snd)
-  ... | nothing | just (fst , snd) = just (fst , parent snd)
+  ... | just (sc' , dsName) | _ = just (sc' , site dsName)
+  ... | nothing | just (sc' , sName) = just (sc' , parent sName)
   ... | nothing | nothing = nothing
 
   ilookup [] xs = nothing
-  ilookup ((qn , (qn1,sc , sn)) ∷ iface) xs with xs C.≟q qn | ilookup iface xs
-  ... | yes p | r2 = just ((proj₁ qn1,sc , proj₂ qn1,sc) , (sn , here (cong₂ _,_ p refl)))
-  ... | no ¬p | just ((fst , snd) , fst₁ , snd₁) = just ((fst , snd) , (fst₁ , there snd₁))
+  ilookup (interfaceEntry xs' ys sc sn ∷ iface) xs with xs C.≟q xs' | ilookup iface xs
+  ... | yes p | _ = just (export ys sc sn (here
+                      (cong-app (cong-app (cong-app
+                        (cong interfaceEntry p)
+                        ys) sc) sn)))
+  ... | no ¬p | just (export ys' sc' sn' entry∈iface) = just (export ys' sc' sn' (there entry∈iface))
   ... | no ¬p | nothing = nothing
 
 interleaved mutual
-  slookupAll1 : (sc : Scope) → List (Σ (C.QName × Scope) λ (xs , sc') → SNameM sc xs sc')
-  dslookupAll : (sc : Scope) → (ds : Decls sc) → List (Σ (C.QName × Scope) λ (xs , sc') → DsNameM sc ds xs sc')
-  dlookupAll : (sc : Scope) → (d : Decl sc) → List (Σ (C.QName × Scope) λ (xs , sc') → DNameM sc d xs sc')
-  ilookupAll : (iface : Interface sc)
-             → List (∃ λ xs → ( Σ (C.QName × Scope) λ (ys , sc')
-                              → Σ (SNameM sc ys sc') λ sn
-                              → (xs , ((ys , sc') , sn)) ∈ iface))
+  slookupAll1 : (sc : Scope)
+              → List (Σ (C.QName × Scope) λ (xs , sc') → SNameM sc xs sc')
+  dslookupAll : (sc : Scope) → (ds : Decls sc)
+              → List (Σ (C.QName × Scope) λ (xs , sc') → DsNameM sc ds xs sc')
+  dlookupAll  : (sc : Scope) → (d : Decl sc)
+              → List (Σ (C.QName × Scope) λ (xs , sc') → DNameM sc d xs sc')
+  ilookupAll  : (iface : Interface sc)
+              → List (∃ λ xs → Export sc iface xs)
 
   slookupAll1 ε = []
-  -- We only need the direct contents of the module so we only look at the first level.
-  -- TODO: do we also need a slookupAll that looks at all the levels?
-  slookupAll1 (sc ⦊ ds) = Data.Product.map₂ site [<$>] dslookupAll sc ds
+  slookupAll1 (sc ⦊ ds) = Data.Product.map₂ site <$> dslookupAll sc ds
 
   dslookupAll sc ε = []
   dslookupAll sc (ds ⦊ d) =
-    (Data.Product.map₂ here [<$>] dlookupAll (sc ⦊ ds) d) ++
-    (Data.Product.map₂ there [<$>] dslookupAll sc ds)
+    (Data.Product.map₂ here <$> dlookupAll (sc ⦊ ds) d) ++
+    (Data.Product.map₂ there <$> dslookupAll sc ds)
 
   dlookupAll sc (modl x ds) =
-    Data.Product.map (Data.Product.map₁ (C.qual x)) inside [<$>] dslookupAll sc ds
+    Data.Product.map (Data.Product.map₁ (C.qual x)) inside <$> dslookupAll sc ds
   dlookupAll sc (opn m iface) =
-    -- TODO This is a bit of a mess. Same with ilookupEntry.
-    --      Is it possible to clean it up a bit by restructuring the sigmas?
-    (λ (xs , ((ys , sc') , (sn , entry∈iface))) →
-      ((xs , sc') , imp entry∈iface)
-    )
-    [<$>] ilookupAll iface
+    (λ (xs , export ys sc' sn entry∈iface) → (xs , sc') , imp entry∈iface)
+    <$> ilookupAll iface
 
   ilookupEntry : ∀{sc iface} → {entry : InterfaceEntry sc} → entry ∈ iface
-               → (∃ λ xs → ( Σ (C.QName × Scope) λ (ys , sc')
-                           → Σ (SNameM sc ys sc') λ sn
-                           → (xs , ((ys , sc') , sn)) ∈ iface))
-  ilookupEntry {sc} {iface} {xs , ys,sc' , sn} entry∈iface = xs , (ys,sc' , (sn , entry∈iface))
+               → (∃ λ xs → Export sc iface xs)
+  ilookupEntry {sc} {iface} {interfaceEntry xs ys sc' sn} entry∈iface =
+    xs , export ys sc' sn entry∈iface
 
   ilookupAll iface = mapWith∈ iface ilookupEntry
 
@@ -179,7 +185,7 @@ assignExportedName : C.ImportDirective
                    → Maybe (InterfaceEntry sc)
 -- TODO oops... ImportDirective here is just private/public... we don't have hiding/using/renaming!
 -- ...so for now we just export everything as is
-assignExportedName dir ((ys , sc') , sn) = just (ys , ((ys , sc') , sn))
+assignExportedName dir ((ys , sc') , sn) = just (interfaceEntry ys ys sc' sn)
 
 interleaved mutual
   checkDecl : (sc : Scope) → C.Decl → Maybe (Decl sc)
@@ -187,6 +193,8 @@ interleaved mutual
 
   checkDecl sc (C.modl x d) = modl x <$> checkDecls sc d
   checkDecl sc (C.opn q i)
+                        -- We only need the direct contents of the module
+                        -- so we only look at the first level with slookupAll1.
     with slookup sc q | mapMaybe (assignExportedName i) (slookupAll1 sc)
   ... | just (modSc , modSn) | iface = just (opn modSn iface)
   ... | nothing | iface = nothing
